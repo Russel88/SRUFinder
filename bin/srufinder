@@ -1,0 +1,40 @@
+#!/usr/bin/env python
+
+import argparse
+import logging
+import os
+import sys
+
+from srufinder.controller import Controller
+from srufinder.prodigal import Prodigal
+
+########## Arguments ##########
+ap = argparse.ArgumentParser()
+
+# Required
+ap.add_argument('input', help='Input fasta file')
+ap.add_argument('output', help='Prefix for output directory')
+
+# Optional
+ap.add_argument('-t', '--threads', help='Number of parallel processes [%(default)s].', default=4, type=int)
+ap.add_argument('--prodigal', help='Which mode to run prodigal in [%(default)s].', default='single', type=str, choices=['single','meta'])
+ap.add_argument('--log_lvl', help='Logging level [%(default)s].', default='INFO', type=str, choices=['DEBUG','INFO','WARNING','ERROR'])
+
+# Data
+apd = ap.add_argument_group('data arguments')
+apd.add_argument('--db', help='Path to database.', default='', type=str)
+
+# Thresholds
+apt = ap.add_argument_group('threshold arguments')
+apt.add_argument('--orf', help='ORF confidence threshold [%(default)s].', default=80, type=int)
+
+# Workflow starts here
+
+
+########## Initialize ##########
+master = Controller(ap.parse_args())
+
+########## Prodigal ##########
+proteins = Prodigal(master)
+proteins.run()
+
