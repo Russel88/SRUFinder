@@ -49,7 +49,7 @@ svn checkout https://github.com/Russel88/SRUFinder/trunk/data
 
 # Tell SRUFinder where the data is:
 # either by setting an environment variable (has to done for each terminal session, or added to .bashrc):
-export SRUFinder_DB="/path/to/data/"
+export SRUFINDER_DB="/path/to/data/"
 # or by using the --db argument each time you run SRUFinder:
 srufinder input.fa output --db /path/to/data/
 ```

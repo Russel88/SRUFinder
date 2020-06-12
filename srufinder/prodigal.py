@@ -6,54 +6,94 @@ import re
 
 import pandas as pd
 
+from Bio import SeqIO
+from Bio.Seq import Seq
+
 class Prodigal(object):
     
     def __init__(self, obj):
         self.master = obj
 
-    def run_prod(self):
+    def run(self):
+        '''
+        Running prodigal to predict ORFs in the input sequence.
+        Then check if the run was succesful, load the gff file, 
+        and create a sequence masked with the ORFs
+        '''
 
-        if not self.redo:
-            logging.info('Predicting ORFs with prodigal')
+        logging.info('Predicting ORFs with prodigal')
 
-            # Run prodigal
-            with open(self.out+'prodigal.log', 'w') as prodigal_log:
-                subprocess.run(['prodigal', 
-                                '-i', self.fasta, 
-                                '-a', self.out+'proteins.faa', 
-                                '-p', self.prod], 
-                                stdout=subprocess.DEVNULL, 
-                                stderr=prodigal_log)
+        # Run prodigal
+        with open(self.master.out+'prodigal.gff', 'w') as prodigal_out:
+            subprocess.run(['prodigal', 
+                            '-i', self.master.fasta, 
+                            '-p', self.master.prod,
+                            '-f', 'gff'], 
+                            stdout=prodigal_out, 
+                            stderr=subprocess.DEVNULL)
 
-            # Check if succesful
-            self.check_rerun()
-            
-            # Make gene table
-            self.get_genes()
-
-    def check_rerun(self):
+        # Check if succesful
+        self.check()
         
+        # Load genes and filter
+        self.get_genes()
+
+        # Mask fasta
+        self.mask()
+
+    def check(self):
+        '''
+        Check if the prodigal output has a size larger than 0 
+        else terminate
+        '''
+
+        logging.debug('Checking prodigal output')
+
         # Check prodigal output
-        if os.stat(self.prot_path).st_size == 0:
-            if self.prod == 'single':
-                logging.warning('Prodigal failed. Trying in meta mode')
-                self.prod = 'meta'
-                self.run_prod()
-            else:
-                logging.critical('Prodigal failed! Check the log')
-                sys.exit()
+        if os.stat(self.master.out+'prodigal.gff').st_size == 0:
+            logging.critical('Prodigal failed!')
+            sys.exit()
 
     def get_genes(self):
-        
-        with open(self.out+'genes.tab', 'w') as gene_tab:
-            subprocess.run(['grep', '^>', self.out+'proteins.faa'], stdout=gene_tab)
+        '''
+        Load the prodigal gff file and save a dataframe,
+        where low confident ORFs have been removed
+        '''
 
-        genes = pd.read_csv(self.out+'genes.tab', sep='\s+', header=None,
-            usecols=(0,2,4,6), names=('Contig', 'Start', 'End', 'Strand'))
+        logging.debug('Loading prodigal GFF')
 
-        genes['Contig'] = [re.sub('^>','',x) for x in genes['Contig']]
-        genes['Pos'] = [int(re.sub(".*_","",x)) for x in genes['Contig']]
-        genes['Contig'] = [re.sub("_[0-9]*$","",x) for x in genes['Contig']]
+        genes = pd.read_csv(self.master.out+'prodigal.gff', sep='\t|;[a-z,A-Z,_]*=', comment="#", engine='python')
+       
+        # Remove low confidence
+        self.genes = genes[genes.iloc[:,14] >= self.master.orf]
+
+    def mask(self):
+        '''
+        Masking input by replacing all ORF sequences with N's
+        '''
+
+        logging.info('Masking input sequence')
         
-        self.genes = genes
-        
+        with open(self.master.out+'masked.fna', 'w') as out_file:
+            falist = SeqIO.parse(open(self.master.fasta, 'r'), 'fasta')
+            # For each sequence
+            for fas in falist:
+                name = fas.id
+                Xsub = self.genes[self.genes.iloc[:,0] == str(name)]
+                # Only fastas found in Xtable
+                if not Xsub.empty:
+                    seq = str(fas.seq)
+                    # Each row of Xtable
+                    for row in Xsub.itertuples():
+                        # From where to where
+                        Xfrom = row[4]
+                        Xto = row[5]
+                        # New sequence
+                        seq1 = seq[:int(Xfrom) - 1]
+                        seqX = 'N'*(Xto-Xfrom+1)
+                        seq2 = seq[int(Xto):]
+                        seq = seq1+seqX+seq2
+                    fas.seq = Seq(seq)
+                # Write sequence
+                SeqIO.write(fas, out_file, "fasta")
+

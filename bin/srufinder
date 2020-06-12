@@ -7,6 +7,8 @@ import sys
 
 from srufinder.controller import Controller
 from srufinder.prodigal import Prodigal
+from srufinder.blast import Blast
+from srufinder.cluster import Cluster
 
 ########## Arguments ##########
 ap = argparse.ArgumentParser()
@@ -27,14 +29,21 @@ apd.add_argument('--db', help='Path to database.', default='', type=str)
 # Thresholds
 apt = ap.add_argument_group('threshold arguments')
 apt.add_argument('--orf', help='ORF confidence threshold [%(default)s].', default=80, type=int)
+apt.add_argument('--word_size', help='Word size for BLASTN [%(default)s].', default=8, type=int)
+apt.add_argument('--identity', help='Identity cutoff for considering BLAST matches [%(default)s].', default=90, type=float)
+apt.add_argument('--coverage', help='Coverage cutoff for splitting matches in complete and partial [%(default)s].', default=90, type=float)
+apt.add_argument('--coverage_part', help='Coverage cutoff for partial matches [%(default)s].', default=50, type=float)
+apt.add_argument('--max_dist', help='Maximum distance between matches to be part of same array  [%(default)s].', default=100, type=int)
 
-# Workflow starts here
 
-
-########## Initialize ##########
+########## Workflow ##########
 master = Controller(ap.parse_args())
 
-########## Prodigal ##########
 proteins = Prodigal(master)
 proteins.run()
 
+blast = Blast(master)
+blast.run()
+
+cluster = Cluster(master)
+cluster.run()

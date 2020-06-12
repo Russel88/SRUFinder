@@ -9,15 +9,29 @@ from Bio import SeqIO
 class Controller(object):
 
     def __init__(self, args):
-       
+        '''
+        Initialize master object by:
+        Getting arguments from input
+        Starting the logger
+        Checking database, input, and output
+        Write the arguments to a file
+        '''
+
         self.fasta = args.input
         self.out = args.output
         self.prod = args.prodigal
         self.db = args.db
+        self.threads = args.threads
         self.orf = args.orf
+        self.log_lvl = args.log_lvl
+        self.word_size = args.word_size
+        self.identity = args.identity
+        self.max_dist = args.max_dist
+        self.coverage = args.coverage
+        self.coverage_part = args.coverage_part
 
         # Logger
-        logging.basicConfig(format='[%(asctime)s] %(levelname)s: %(message)s', datefmt='%Y-%m-%d %H:%M:%S', level=self.lvl)
+        logging.basicConfig(format='[%(asctime)s] %(levelname)s: %(message)s', datefmt='%Y-%m-%d %H:%M:%S', level=self.log_lvl)
         logging.info('Running SRUFinder version 0.0.1')
 
         # Force consistency
@@ -27,51 +41,55 @@ class Controller(object):
         self.check_db()
         
         # Check input and output
-        self.check_input()
+        self.load_input()
         self.check_out()
+
+        # Get repeat lengths
+        self.get_len()
 
         # Write arguments
         da = vars(args)
         f = open(self.out+'arguments.tab', 'w')
         for k, v in da.items():
-            f.write('{}:\t{}\n'.format(k, v))
+            f.write('{}: {}\n'.format(k, v))
         f.close()
 
     def check_out(self):
+        '''
+        Create the output dir if possible else terminate
+        '''
 
-        if not self.redo:
-            try:
-                os.mkdir(self.out)
-            except FileExistsError:
-                logging.error('Directory '+self.out+' already exists')
-                sys.exit()
-
-    def check_input(self):
-
-        if not self.check_inp:
-            if os.path.isfile(self.fasta):
-                if not self.is_fasta():
-                    logging.error('Input file is not in fasta format')
-                    sys.exit()
-            else:
-                logging.error('Could not find input file')
-                sys.exit()
-
-    def is_fasta(self):
-        
         try:
-            with open(self.fasta, 'r') as handle:
-                fa = SeqIO.parse(handle, 'fasta')
-                [float(x.id) for x in fa]
-                logging.error('Numeric fasta headers not supported')
-                return False
-        except:
-            with open(self.fasta, 'r') as handle:
-                fa = SeqIO.parse(handle, 'fasta')
-                return any(fa)
+            os.mkdir(self.out)
+        except FileExistsError:
+            logging.error('Directory '+self.out+' already exists')
+            sys.exit()
+
+    def load_input(self):
+        '''
+        Check that input file exists and that it looks like a fasta
+        '''
+
+        if os.path.isfile(self.fasta):
+            try:
+                self.sequences = {}
+                with open(self.fasta, 'r') as handle:
+                    for rec in SeqIO.parse(handle, 'fasta'):
+                        self.sequences[rec.id] = rec.seq
+
+            except:
+                logging.error('Input file is not in fasta format')
+                sys.exit()
+        else:
+            logging.error('Could not find input file')
+            sys.exit()
 
     def check_db(self):
-        
+        '''
+        Ensure that the database environment variable is set
+        if not database is explicilitly given
+        '''
+
         if self.db == '':
             try:
                 self.db = os.environ['SRUFINDER_DB']
@@ -81,3 +99,15 @@ class Controller(object):
 
         self.repeatdb = os.path.join(self.db, "repeats.fa")
 
+    def get_len(self):
+        '''
+        Get lengths of all repeat sequences for coverage calculation later
+        '''
+
+        with open(self.repeatdb, 'r') as handle:
+            fas = SeqIO.parse(handle, 'fasta')
+            len_dict = {}
+            for fa in fas:
+                len_dict[fa.id] = len(fa.seq)
+
+        self.len_df = pd.DataFrame.from_dict(len_dict, orient='index', columns=['Repeat_len']) 
