@@ -1,6 +1,7 @@
 import os
 import logging
 import sys
+import pkg_resources
 
 import pandas as pd
 
@@ -29,10 +30,13 @@ class Controller(object):
         self.max_dist = args.max_dist
         self.coverage = args.coverage
         self.coverage_part = args.coverage_part
+        self.flank = args.flank
+        self.spacer_identity = args.spacer_identity
+        self.spacer_coverage = args.spacer_coverage
 
         # Logger
         logging.basicConfig(format='[%(asctime)s] %(levelname)s: %(message)s', datefmt='%Y-%m-%d %H:%M:%S', level=self.log_lvl)
-        logging.info('Running SRUFinder version 0.0.1')
+        logging.info('Running SRUFinder version {}'.format(pkg_resources.require("srufinder")[0].version))
 
         # Force consistency
         self.out = os.path.join(self.out, '')
@@ -108,6 +112,6 @@ class Controller(object):
             fas = SeqIO.parse(handle, 'fasta')
             len_dict = {}
             for fa in fas:
-                len_dict[fa.id] = len(fa.seq)
+                len_dict[str(fa.id)] = len(fa.seq)
 
         self.len_df = pd.DataFrame.from_dict(len_dict, orient='index', columns=['Repeat_len']) 

@@ -1,4 +1,4 @@
-$PYTHON -m pip install . -vv
+$PYTHON setup.py install
 
 cat >${RECIPE_DIR}/activate.sh <<EOF
 #!/bin/sh

@@ -78,8 +78,8 @@ class Prodigal(object):
             falist = SeqIO.parse(open(self.master.fasta, 'r'), 'fasta')
             # For each sequence
             for fas in falist:
-                name = fas.id
-                Xsub = self.genes[self.genes.iloc[:,0] == str(name)]
+                name = str(fas.id)
+                Xsub = self.genes[[x == name for x in self.genes.iloc[:,0]]]
                 # Only fastas found in Xtable
                 if not Xsub.empty:
                     seq = str(fas.seq)

@@ -4,6 +4,7 @@ import argparse
 import logging
 import os
 import sys
+import pkg_resources
 
 from srufinder.controller import Controller
 from srufinder.prodigal import Prodigal
@@ -11,7 +12,7 @@ from srufinder.blast import Blast
 from srufinder.cluster import Cluster
 
 ########## Arguments ##########
-ap = argparse.ArgumentParser()
+ap = argparse.ArgumentParser(description='SRUFinder version {}'.format(pkg_resources.require("srufinder")[0].version))
 
 # Required
 ap.add_argument('input', help='Input fasta file')
@@ -29,11 +30,14 @@ apd.add_argument('--db', help='Path to database.', default='', type=str)
 # Thresholds
 apt = ap.add_argument_group('threshold arguments')
 apt.add_argument('--orf', help='ORF confidence threshold [%(default)s].', default=80, type=int)
-apt.add_argument('--word_size', help='Word size for BLASTN [%(default)s].', default=8, type=int)
+apt.add_argument('--word_size', help='Word size for BLASTN [%(default)s].', default=6, type=int)
 apt.add_argument('--identity', help='Identity cutoff for considering BLAST matches [%(default)s].', default=90, type=float)
 apt.add_argument('--coverage', help='Coverage cutoff for splitting matches in complete and partial [%(default)s].', default=90, type=float)
 apt.add_argument('--coverage_part', help='Coverage cutoff for partial matches [%(default)s].', default=50, type=float)
 apt.add_argument('--max_dist', help='Maximum distance between matches to be part of same array  [%(default)s].', default=100, type=int)
+apt.add_argument('--flank', help='bp to extract of the flanking regions [%(default)s].', default=100, type=int)
+apt.add_argument('--spacer_identity', help='Identity cutoff for considering BLAST matches for spacers [%(default)s].', default=90, type=float)
+apt.add_argument('--spacer_coverage', help='Coverage cutoff for considering BLAST matches for spacers [%(default)s].', default=90, type=float)
 
 
 ########## Workflow ##########
@@ -47,3 +51,8 @@ blast.run()
 
 cluster = Cluster(master)
 cluster.run()
+
+blast2 = Blast(master)
+blast.run_spacer()
+
+logging.info('Done')

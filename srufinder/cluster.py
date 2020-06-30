@@ -2,8 +2,11 @@ import os
 import subprocess
 import logging
 import sys
+import re
 
 import pandas as pd
+
+from Bio import pairwise2
 
 class Cluster(object):
     
@@ -40,21 +43,39 @@ class Cluster(object):
         # Keep only best matches if overlapping
         self.remove_overlap()
 
+        # Add repeats
+        self.add_repeats()
+
         # Cluster matches in arrays
         self.cluster_adj()
 
         # Append partial matches
         self.append_partial()
 
-        # Add sequences
-        self.add_sequences()
-
         # Round
         self.df_appended = self.df_appended.round({'Identity': 1, 'Coverage': 1})
         self.df_appended['Evalue'] = ['{:0.1e}'.format(x) for x in self.df_appended['Evalue']]
 
-        # Write result
-        self.df_appended.to_csv(self.master.out+'clusters.tab', index=False, sep='\t')
+        # Split in SRU and arrays
+        count_dict = self.df_appended.groupby('Cluster')['Cluster'].count().to_dict()
+        cluster_sru = [x for x in count_dict if count_dict[x] == 1]
+        cluster_array = [x for x in count_dict if count_dict[x] > 1]
+       
+        # If any SRUs
+        if len(cluster_sru) > 0:
+        
+            self.df_sru = self.df_appended[self.df_appended['Cluster'].isin(cluster_sru)]
+            self.add_flank()
+            self.df_sru.to_csv(self.master.out+'SRUs.tab', index=False, sep='\t')
+       
+        # If any arrays
+        if len(cluster_array) > 0:
+
+            self.df_array = self.df_appended[self.df_appended['Cluster'].isin(cluster_array)]
+            self.convert_array()
+            self.df_arrays.to_csv(self.master.out+'arrays.tab', index=False, sep='\t')
+
+        logging.info('Found {} SRU(s) and {} CRISPR array(s)'.format(len(cluster_sru), len(cluster_array)))
 
     def overlap(self,x,y):
         '''
@@ -80,6 +101,19 @@ class Cluster(object):
         '''
         return [self.dist(x,y) for y in ll]
     
+    def identity(self,x,y):
+        '''
+        Calculate identity between two sequences
+        '''
+        align = pairwise2.align.globalxs(x, y, -1, -1, penalize_end_gaps=False)
+        return(align[0][2]/min(len(x), len(y))*100)
+
+    def identity_all(self,x,ll):
+        '''
+        Calculate identity between one sequence and a list of sequences
+        '''
+        return([self.identity(x, y) for y in ll])
+
     def remove_overlap(self):
         '''
         If matches overlap keep only the best
@@ -88,7 +122,7 @@ class Cluster(object):
         logging.info('Removing overlapping matches')
 
         # Sort by alignment quality
-        self.df = self.df.sort_values(['Acc', 'Score', 'Alignment'], ascending=False) 
+        self.df = self.df.sort_values(['Acc', 'Score', 'Coverage'], ascending=False) 
 
         overlap_lst = []
         for i in set(self.df['Acc']):
@@ -116,6 +150,8 @@ class Cluster(object):
         # If several contigs, concatenate
         self.df_overlap = pd.concat(overlap_lst)
 
+        # Write
+        self.df_overlap.to_csv(self.master.out+'blast_best.tab', index=False, sep='\t')
     
     def cluster_adj(self):
         '''
@@ -136,7 +172,6 @@ class Cluster(object):
             sys.exit()
 
         cluster_df_lst = []
-        cluster_lst = []
         cluster = 0
         # For each contig
         for i in set(self.df_overlap_compl['Acc']):
@@ -163,7 +198,11 @@ class Cluster(object):
             
             tmp.insert(len(tmp.columns), 'Cluster', cluster_list)
             cluster_df_lst.append(tmp)
-       
+            
+            # Increment cluster ID for next acc
+            cluster += 1
+
+
         # If several contigs, concatenate
         self.df_cluster = pd.concat(cluster_df_lst)
 
@@ -176,15 +215,20 @@ class Cluster(object):
         # For each cluster
         for cl in set(self.df_cluster['Cluster']):
             tmp = self.df_cluster[self.df_cluster['Cluster'] == cl]
+            tmp_part = self.df_overlap_part[self.df_overlap_part['Acc'] == list(tmp['Acc'])[0]]
 
             # Distances between cluster position and partial matches
             cluster_start = min(tmp['Min'])
             cluster_end = max(tmp['Max'])
 
-            dists = self.dist_all((cluster_start, cluster_end), zip(list(self.df_overlap_part['Min']),list(self.df_overlap_part['Max'])))
+            dists = self.dist_all((cluster_start, cluster_end), zip(list(tmp_part['Min']),list(tmp_part['Max'])))
             
             # Add partial matches
-            part_adj = self.df_overlap_part[[x < self.master.max_dist and x > 0 for x in dists]]
+            part_adj = tmp_part[[x < self.master.max_dist and x > 0 for x in dists]]
+            
+            # Only those with similar sequences
+            idents = part_adj.apply(lambda row: any([k >= self.master.identity for k in self.identity_all(str(row['Sequence']), [str(x) for x in tmp['Sequence'].values])]), axis=1)
+            part_adj = part_adj[idents.values] 
             part_adj.insert(len(part_adj.columns), 'Cluster', cl)
             tmp = pd.concat([tmp, part_adj])
 
@@ -200,11 +244,63 @@ class Cluster(object):
         Return sequence from position information
         '''
 
-        return(self.master.sequences[acc][(start-1):end])
+        if start < 1:
+            start = 1
+        
+        return(self.master.sequences[str(acc)][(start-1):end])
 
-    def add_sequences(self):
+    def add_repeats(self):
         '''
-        Add sequences to the clustering dataframe
+        Add repeats to the no-overlap dataframe
         '''
         
-        self.df_appended['Sequence'] = self.df_appended.apply(lambda row: self.get_sequence(row['Acc'], row['Start'], row['End']), axis=1)
+        self.df_overlap.insert(len(self.df_overlap.columns), 'Sequence', self.df_overlap.apply(lambda row: self.get_sequence(row['Acc'], row['Min'], row['Max']), axis=1))
+    
+    def add_flank(self):
+        '''
+        Add flanking sequences to the SRU dataframe
+        '''
+        
+        self.df_sru.insert(len(self.df_sru.columns), 'Left_flank', self.df_sru.apply(lambda row: self.get_sequence(row['Acc'], row['Start']-1-self.master.flank, row['Start']-1), axis=1))
+        self.df_sru.insert(len(self.df_sru.columns), 'Right_flank', self.df_sru.apply(lambda row: self.get_sequence(row['Acc'], row['End']+1, row['End']+1+self.master.flank), axis=1))
+
+    def convert_array(self):
+        '''
+        Add spacers to arrays
+        '''
+
+        f = open(self.master.out+'spacers.fa', 'w')
+
+        # For each array
+        cls = set(self.df_array['Cluster'])
+        dict_lst = []
+        for cl in cls:
+            tmp = self.df_array[self.df_array['Cluster'] == cl]
+            acc = list(tmp['Acc'])[0]
+            n = 0
+
+            # Get spacers
+            spacers = [str(self.get_sequence(acc, x[0]+1, x[1]-1)) for x in zip(tmp['End'][:(len(tmp)-1)], tmp['Start'][1:])]
+
+            for sp in spacers:
+                n += 1
+                f.write('>{}_{}:{}\n'.format(acc, cl, n))
+                f.write('{}\n'.format(sp))
+
+            # Compile
+            dict_lst.append({'Acc': acc,
+                            'Start': min(tmp['Start']),
+                            'End': max(tmp['End']),
+                            'Cluster': cl,
+                            'Repeats': [str(x) for x in list(tmp['Sequence'])],
+                            'Repeat_types': [re.sub(':.*','',x) for x in list(tmp['Repeat'])],
+                            'Spacers': spacers})
+        
+        self.df_arrays = pd.DataFrame(dict_lst)
+
+        f.close()
+
+        # Add flanks
+        self.df_arrays.insert(len(self.df_arrays.columns), 'Left_flank', self.df_arrays.apply(lambda row: self.get_sequence(row['Acc'], row['Start']-1-self.master.flank, row['Start']-1), axis=1))
+        self.df_arrays.insert(len(self.df_arrays.columns), 'Right_flank', self.df_arrays.apply(lambda row: self.get_sequence(row['Acc'], row['End']+1, row['End']+1+self.master.flank), axis=1))
+
