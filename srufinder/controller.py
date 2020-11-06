@@ -2,6 +2,7 @@ import os
 import logging
 import sys
 import pkg_resources
+import glob
 
 import pandas as pd
 
@@ -115,3 +116,21 @@ class Controller(object):
                 len_dict[str(fa.id)] = len(fa.seq)
 
         self.len_df = pd.DataFrame.from_dict(len_dict, orient='index', columns=['Repeat_len']) 
+
+    def clean(self):
+        '''
+        Removing temporary files
+        '''
+
+        logging.debug('Removing temporary files')
+
+        if os.path.isfile(self.out+'masked.fna'):
+            list(map(os.remove, glob.glob(self.out+'masked*')))
+        
+        if os.path.isfile(self.out+'genome.fna'):
+            list(map(os.remove, glob.glob(self.out+'genome*')))
+
+        if os.path.isfile(self.out+'flanking.fna'):
+            os.remove(self.out+'flanking.fna')
+        
+        os.remove(self.out+'prodigal.gff')

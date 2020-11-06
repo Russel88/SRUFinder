@@ -7,6 +7,8 @@ import re
 import pandas as pd
 
 from Bio import pairwise2
+from Bio import SeqIO
+from Bio.Seq import Seq
 
 class Cluster(object):
     
@@ -34,6 +36,7 @@ class Cluster(object):
         # Check if any matches
         if len(self.df) == 0:
             logging.info('No matches with identity >= {}% found'.format(self.master.identity))
+            self.master.clean()
             sys.exit()
 
         # Create new columns
@@ -53,10 +56,12 @@ class Cluster(object):
         self.append_partial()
 
         # Round
+        logging.debug('Rounding columns')
         self.df_appended = self.df_appended.round({'Identity': 1, 'Coverage': 1})
         self.df_appended['Evalue'] = ['{:0.1e}'.format(x) for x in self.df_appended['Evalue']]
-
+        
         # Split in SRU and arrays
+        logging.debug('Splitting in SRUs and arrays')
         count_dict = self.df_appended.groupby('Cluster')['Cluster'].count().to_dict()
         cluster_sru = [x for x in count_dict if count_dict[x] == 1]
         cluster_array = [x for x in count_dict if count_dict[x] > 1]
@@ -67,13 +72,17 @@ class Cluster(object):
             self.df_sru = self.df_appended[self.df_appended['Cluster'].isin(cluster_sru)]
             self.add_flank()
             self.df_sru.to_csv(self.master.out+'SRUs.tab', index=False, sep='\t')
-       
+            self.write_flank(self.df_sru)
+            self.write_repeats(self.df_sru, 'sru')
+
         # If any arrays
         if len(cluster_array) > 0:
 
             self.df_array = self.df_appended[self.df_appended['Cluster'].isin(cluster_array)]
             self.convert_array()
             self.df_arrays.to_csv(self.master.out+'arrays.tab', index=False, sep='\t')
+            self.write_flank(self.df_arrays)
+            self.write_repeats(self.df_arrays, 'array')
 
         logging.info('Found {} SRU(s) and {} CRISPR array(s)'.format(len(cluster_sru), len(cluster_array)))
 
@@ -169,6 +178,7 @@ class Cluster(object):
 
         if len(self.df_overlap_compl) == 0:
             logging.info('No matches with coverage >= {}% found'.format(self.master.coverage))
+            self.master.clean()
             sys.exit()
 
         cluster_df_lst = []
@@ -211,12 +221,14 @@ class Cluster(object):
         Check if there are any partial matches near clusters
         '''
 
+        logging.debug('Appending partial repeats')
+
         append_lst = []
         # For each cluster
         for cl in set(self.df_cluster['Cluster']):
             tmp = self.df_cluster[self.df_cluster['Cluster'] == cl]
             tmp_part = self.df_overlap_part[self.df_overlap_part['Acc'] == list(tmp['Acc'])[0]]
-
+            
             # Distances between cluster position and partial matches
             cluster_start = min(tmp['Min'])
             cluster_end = max(tmp['Max'])
@@ -229,16 +241,18 @@ class Cluster(object):
             # Only those with similar sequences
             idents = part_adj.apply(lambda row: any([k >= self.master.identity for k in self.identity_all(str(row['Sequence']), [str(x) for x in tmp['Sequence'].values])]), axis=1)
             part_adj = part_adj[idents.values] 
-            part_adj.insert(len(part_adj.columns), 'Cluster', cl)
-            tmp = pd.concat([tmp, part_adj])
-
+            
+            if len(part_adj) > 0:
+                part_adj.insert(len(part_adj.columns), 'Cluster', cl)
+                tmp = pd.concat([tmp, part_adj])
+            
             append_lst.append(tmp)
 
         self.df_appended = pd.concat(append_lst)
         self.df_appended = self.df_appended.sort_values(['Acc', 'Min']) 
         self.df_appended = self.df_appended.drop(columns=['Acc_start','Acc_end'])
         self.df_appended = self.df_appended.rename(columns={'Min':'Start', 'Max':'End'})
-
+        
     def get_sequence(self, acc, start, end):
         '''
         Return sequence from position information
@@ -246,28 +260,36 @@ class Cluster(object):
 
         if start < 1:
             start = 1
-        
-        return(self.master.sequences[str(acc)][(start-1):end])
+       
+        return(''.join(self.master.sequences[str(acc)][(start-1):end]))
 
     def add_repeats(self):
         '''
         Add repeats to the no-overlap dataframe
         '''
         
+        logging.debug('Adding repeat sequences')
+
         self.df_overlap.insert(len(self.df_overlap.columns), 'Sequence', self.df_overlap.apply(lambda row: self.get_sequence(row['Acc'], row['Min'], row['Max']), axis=1))
     
     def add_flank(self):
         '''
         Add flanking sequences to the SRU dataframe
         '''
-        
+       
+        logging.debug('Adding flanking sequences')
+
         self.df_sru.insert(len(self.df_sru.columns), 'Left_flank', self.df_sru.apply(lambda row: self.get_sequence(row['Acc'], row['Start']-1-self.master.flank, row['Start']-1), axis=1))
         self.df_sru.insert(len(self.df_sru.columns), 'Right_flank', self.df_sru.apply(lambda row: self.get_sequence(row['Acc'], row['End']+1, row['End']+1+self.master.flank), axis=1))
 
     def convert_array(self):
         '''
+        Convert array dataframe such that each array is one row
         Add spacers to arrays
+        Mask input by arrays for self-matching
         '''
+
+        logging.debug('Converting array dataframe')
 
         f = open(self.master.out+'spacers.fa', 'w')
 
@@ -297,10 +319,76 @@ class Cluster(object):
                             'Spacers': spacers})
         
         self.df_arrays = pd.DataFrame(dict_lst)
-
+        
         f.close()
 
         # Add flanks
         self.df_arrays.insert(len(self.df_arrays.columns), 'Left_flank', self.df_arrays.apply(lambda row: self.get_sequence(row['Acc'], row['Start']-1-self.master.flank, row['Start']-1), axis=1))
         self.df_arrays.insert(len(self.df_arrays.columns), 'Right_flank', self.df_arrays.apply(lambda row: self.get_sequence(row['Acc'], row['End']+1, row['End']+1+self.master.flank), axis=1))
 
+        # Mask input by arrays
+        logging.debug('Masking input sequence by arrays')
+        
+        with open(self.master.out+'genome.fna', 'w') as out_file:
+            falist = SeqIO.parse(open(self.master.fasta, 'r'), 'fasta')
+            # For each sequence
+            for fas in falist:
+                name = str(fas.id)
+                Xsub = self.df_arrays[[x == name for x in self.df_arrays['Acc']]]
+                # Only fastas found in Xtable
+                if not Xsub.empty:
+                    seq = str(fas.seq)
+                    # Each row of Xtable
+                    for row in Xsub.itertuples():
+                        # From where to where
+                        Xfrom = row[2]
+                        Xto = row[3]
+                        # New sequence
+                        seq1 = seq[:int(Xfrom) - 1]
+                        seqX = 'N'*(Xto-Xfrom+1)
+                        seq2 = seq[int(Xto):]
+                        seq = seq1+seqX+seq2
+                    fas.seq = Seq(seq)
+                # Write sequence
+                SeqIO.write(fas, out_file, "fasta")
+
+    def write_flank(self, df):
+        '''
+        Write the flanking sequences to a fasta file for bprom
+        '''
+        logging.debug('Writing flanking sequences to file')
+
+        acc = list(df['Cluster'])
+        flank_l = list(df['Left_flank'])
+        flank_r = list(df['Right_flank'])
+
+        with open(self.master.out+'flanking.fna', 'w') as fl:
+            for x in zip(acc, flank_l, flank_r) :
+                fl.write('>Cluster'+str(x[0])+'_Left\n'+x[1]+'\n')
+                fl.write('>Cluster'+str(x[0])+'_Right\n'+x[2]+'\n')
+
+    def write_repeats(self, df, which):
+        '''
+        Write repeat sequences to a fasta file for RNAfold
+        '''
+        logging.debug('Writing repeat sequences to file')
+
+        if which == 'sru':
+            acc = list(df['Cluster'])
+            seqs = list(df['Sequence'])
+
+            with open(self.master.out+'repeats.fna', 'a') as fl:
+                for x in zip(acc, seqs) :
+                    fl.write('>Cluster'+str(x[0])+'_SRU\n'+x[1]+'\n')
+        
+        if which == 'array':
+            acc = list(df['Cluster'])
+            seqs = list(df['Repeats'])
+            
+            with open(self.master.out+'repeats.fna', 'a') as fl:
+                for x in zip(acc, seqs) :
+                    n = 0
+                    for y in x[1]:
+                        n += 1
+                        fl.write('>Cluster'+str(x[0])+'_Repeat'+str(n)+'\n'+y+'\n')
+        

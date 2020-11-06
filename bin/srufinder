@@ -10,6 +10,8 @@ from srufinder.controller import Controller
 from srufinder.prodigal import Prodigal
 from srufinder.blast import Blast
 from srufinder.cluster import Cluster
+from srufinder.promoter import Bprom
+from srufinder.fold import Fold
 
 ########## Arguments ##########
 ap = argparse.ArgumentParser(description='SRUFinder version {}'.format(pkg_resources.require("srufinder")[0].version))
@@ -55,4 +57,11 @@ cluster.run()
 blast2 = Blast(master)
 blast.run_spacer()
 
+bprom = Bprom(master)
+bprom.run()
+
+fold = Fold(master)
+fold.run()
+
+master.clean()
 logging.info('Done')

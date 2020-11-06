@@ -47,7 +47,7 @@ class Blast(object):
         '''
 
         # Make the database
-        self.make_db(self.master.fasta, self.master.out+'genome')
+        self.make_db(self.master.out+'genome.fna', self.master.out+'genome')
 
         logging.info('BLASTing spacers against self')
 
