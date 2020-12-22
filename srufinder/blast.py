@@ -46,19 +46,22 @@ class Blast(object):
         BLASTing repeat database against the masked input sequence
         '''
 
-        # Make the database
-        self.make_db(self.master.out+'genome.fna', self.master.out+'genome')
+        # Run only if any array is found and analyis not skipped by user
+        if (not self.master.noself) and os.path.isfile(self.master.out+'spacers.fa'):
+        
+            # Make the database
+            self.make_db(self.master.out+'genome.fna', self.master.out+'genome')
 
-        logging.info('BLASTing spacers against self')
+            logging.info('BLASTing spacers against self')
 
-        # BLASTn
-        subprocess.run(['blastn', 
-                        '-task', 'blastn-short', 
-                        '-word_size', str(self.master.word_size), 
-                        '-query', self.master.out+'spacers.fa',
-                        '-db', self.master.out+'genome',
-                        '-outfmt', '6',
-                        '-perc_identity', str(self.master.spacer_identity),
-                        '-qcov_hsp_perc', str(self.master.spacer_coverage),
-                        '-out', self.master.out+'blast_spacers.tab',
-                        '-num_threads', str(self.master.threads)])
+            # BLASTn
+            subprocess.run(['blastn', 
+                            '-task', 'blastn-short', 
+                            '-word_size', str(self.master.word_size), 
+                            '-query', self.master.out+'spacers.fa',
+                            '-db', self.master.out+'genome',
+                            '-outfmt', '6',
+                            '-perc_identity', str(self.master.spacer_identity),
+                            '-qcov_hsp_perc', str(self.master.spacer_coverage),
+                            '-out', self.master.out+'blast_spacers.tab',
+                            '-num_threads', str(self.master.threads)])

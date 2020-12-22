@@ -228,24 +228,25 @@ class Cluster(object):
         for cl in set(self.df_cluster['Cluster']):
             tmp = self.df_cluster[self.df_cluster['Cluster'] == cl]
             tmp_part = self.df_overlap_part[self.df_overlap_part['Acc'] == list(tmp['Acc'])[0]]
-            
+           
             # Distances between cluster position and partial matches
             cluster_start = min(tmp['Min'])
             cluster_end = max(tmp['Max'])
 
             dists = self.dist_all((cluster_start, cluster_end), zip(list(tmp_part['Min']),list(tmp_part['Max'])))
             
-            # Add partial matches
+            # Only if any partial matches adjacent
             part_adj = tmp_part[[x < self.master.max_dist and x > 0 for x in dists]]
-            
-            # Only those with similar sequences
-            idents = part_adj.apply(lambda row: any([k >= self.master.identity for k in self.identity_all(str(row['Sequence']), [str(x) for x in tmp['Sequence'].values])]), axis=1)
-            part_adj = part_adj[idents.values] 
-            
             if len(part_adj) > 0:
-                part_adj.insert(len(part_adj.columns), 'Cluster', cl)
-                tmp = pd.concat([tmp, part_adj])
-            
+
+                # Only those with similar sequences
+                idents = part_adj.apply(lambda row: any([k >= self.master.identity for k in self.identity_all(str(row['Sequence']), [str(x) for x in tmp['Sequence'].values])]), axis=1)
+                part_adj = part_adj[idents.values] 
+                
+                if len(part_adj) > 0:
+                    part_adj.insert(len(part_adj.columns), 'Cluster', cl)
+                    tmp = pd.concat([tmp, part_adj])
+                
             append_lst.append(tmp)
 
         self.df_appended = pd.concat(append_lst)

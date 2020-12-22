@@ -34,6 +34,7 @@ class Controller(object):
         self.flank = args.flank
         self.spacer_identity = args.spacer_identity
         self.spacer_coverage = args.spacer_coverage
+        self.noself = args.noself
 
         # Logger
         logging.basicConfig(format='[%(asctime)s] %(levelname)s: %(message)s', datefmt='%Y-%m-%d %H:%M:%S', level=self.log_lvl)
