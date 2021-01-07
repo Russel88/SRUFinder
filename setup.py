@@ -1,21 +1,18 @@
 import setuptools
 
-with open("VERSION", "r") as ver:
-    VV = ver.read().strip()
-
 with open("README.md", "r") as fh:
     long_description = fh.read()
 
 setuptools.setup(
     name="srufinder", 
-    version=VV,
+    version="0.1.0",
     author="Jakob Russel",
     author_email="russel2620@gmail.com",
     description="SRUFinder: Find and subtype SRUs, mini-arrays, and CRISPR arrays by repeat matching",
     long_description=long_description,
     long_description_content_type="text/markdown",
     url="https://github.com/Russel88/SRUFinder",
-    download_url="https://github.com/Russel88/SRUFinder/archive/v{}.tar.gz".format(VV),
+    download_url="https://github.com/Russel88/SRUFinder/archive/v0.1.0.tar.gz",
     packages=setuptools.find_packages(),
     classifiers=[
         "Programming Language :: Python :: 3",

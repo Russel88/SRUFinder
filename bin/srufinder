@@ -25,6 +25,7 @@ ap.add_argument('-t', '--threads', help='Number of parallel processes [%(default
 ap.add_argument('--prodigal', help='Which mode to run prodigal in [%(default)s].', default='single', type=str, choices=['single','meta'])
 ap.add_argument('--log_lvl', help='Logging level [%(default)s].', default='INFO', type=str, choices=['DEBUG','INFO','WARNING','ERROR'])
 ap.add_argument('--noself', help='Skip the self-targeting analysis', action='store_true')
+ap.add_argument('--in_orf', help='Reverse the search to only search inside ORFs, as a means to distinguish false from true SRUs', action='store_true')
 
 # Data
 apd = ap.add_argument_group('data arguments')

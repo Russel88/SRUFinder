@@ -65,7 +65,9 @@ class Cluster(object):
         count_dict = self.df_appended.groupby('Cluster')['Cluster'].count().to_dict()
         cluster_sru = [x for x in count_dict if count_dict[x] == 1]
         cluster_array = [x for x in count_dict if count_dict[x] > 1]
-       
+      
+        os.mkdir(self.master.out+'flanking')
+
         # If any SRUs
         if len(cluster_sru) > 0:
         
@@ -358,14 +360,15 @@ class Cluster(object):
         Write the flanking sequences to a fasta file for bprom
         '''
         logging.debug('Writing flanking sequences to file')
-
+        
         acc = list(df['Cluster'])
         flank_l = list(df['Left_flank'])
         flank_r = list(df['Right_flank'])
 
-        with open(self.master.out+'flanking.fna', 'w') as fl:
-            for x in zip(acc, flank_l, flank_r) :
+        for x in zip(acc, flank_l, flank_r) :
+            with open(os.path.join(self.master.out, 'flanking', 'Cluster'+str(x[0])+'_Left.fna'), 'w') as fl:
                 fl.write('>Cluster'+str(x[0])+'_Left\n'+x[1]+'\n')
+            with open(os.path.join(self.master.out, 'flanking', 'Cluster'+str(x[0])+'_Right.fna'), 'w') as fl:
                 fl.write('>Cluster'+str(x[0])+'_Right\n'+x[2]+'\n')
 
     def write_repeats(self, df, which):

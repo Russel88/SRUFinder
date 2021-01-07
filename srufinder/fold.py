@@ -2,6 +2,7 @@ import os
 import subprocess
 import logging
 import sys
+import shutil
 
 class Fold(object):
     
@@ -16,9 +17,11 @@ class Fold(object):
         logging.info('Predicting secondary structure of repeat sequences')
 
         # RNAfold
-        os.mkdir(self.master.out+'RNAfold')
+        if shutil.which('RNAfold') is not None:
+            os.mkdir(self.master.out+'RNAfold')
 
-        subprocess.run(['RNAfold', 
-                        '-i', self.master.out+'repeats.fna',
-                        '-o', os.path.join(self.master.out, 'RNAfold', 'repeat')])
-    
+            subprocess.run(['RNAfold', 
+                            '-i', self.master.out+'repeats.fna',
+                            '-o', os.path.join(self.master.out, 'RNAfold', 'repeat')])
+        else:
+            logging.error('RNAfold not found. Skipping secondary structure prediction')
