@@ -30,6 +30,7 @@ class Controller(object):
         self.identity = args.identity
         self.max_dist = args.max_dist
         self.coverage = args.coverage
+        self.score = args.score
         self.coverage_part = args.coverage_part
         self.flank = args.flank
         self.spacer_identity = args.spacer_identity

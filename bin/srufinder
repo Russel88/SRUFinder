@@ -37,6 +37,7 @@ apt.add_argument('--orf', help='ORF confidence threshold [%(default)s].', defaul
 apt.add_argument('--word_size', help='Word size for BLASTN [%(default)s].', default=6, type=int)
 apt.add_argument('--identity', help='Identity cutoff for considering BLAST matches [%(default)s].', default=90, type=float)
 apt.add_argument('--coverage', help='Coverage cutoff for splitting matches in complete and partial [%(default)s].', default=90, type=float)
+apt.add_argument('--score', help='BLAST score cutoff for discerning false from putative SRUs. This has been set empirically by comparing scores of intergenic (putative) SRUs and SRUs inside ORFs (false) [%(default)s].', default=41.1, type=float)
 apt.add_argument('--coverage_part', help='Coverage cutoff for partial matches [%(default)s].', default=50, type=float)
 apt.add_argument('--max_dist', help='Maximum distance between matches to be part of same array  [%(default)s].', default=100, type=int)
 apt.add_argument('--flank', help='bp to extract of the flanking regions [%(default)s].', default=100, type=int)
@@ -58,9 +59,6 @@ cluster.run()
 
 blast2 = Blast(master)
 blast.run_spacer()
-
-bprom = Bprom(master)
-bprom.run()
 
 fold = Fold(master)
 fold.run()

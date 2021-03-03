@@ -66,15 +66,12 @@ class Cluster(object):
         cluster_sru = [x for x in count_dict if count_dict[x] == 1]
         cluster_array = [x for x in count_dict if count_dict[x] > 1]
       
-        os.mkdir(self.master.out+'flanking')
-
         # If any SRUs
         if len(cluster_sru) > 0:
         
             self.df_sru = self.df_appended[self.df_appended['Cluster'].isin(cluster_sru)]
             self.add_flank()
             self.df_sru.to_csv(self.master.out+'SRUs.tab', index=False, sep='\t')
-            self.write_flank(self.df_sru)
             self.write_repeats(self.df_sru, 'sru')
 
         # If any arrays
@@ -83,7 +80,6 @@ class Cluster(object):
             self.df_array = self.df_appended[self.df_appended['Cluster'].isin(cluster_array)]
             self.convert_array()
             self.df_arrays.to_csv(self.master.out+'arrays.tab', index=False, sep='\t')
-            self.write_flank(self.df_arrays)
             self.write_repeats(self.df_arrays, 'array')
 
         logging.info('Found {} SRU(s) and {} CRISPR array(s)'.format(len(cluster_sru), len(cluster_array)))
@@ -178,8 +174,11 @@ class Cluster(object):
         self.df_overlap_compl = self.df_overlap[self.df_overlap['Coverage'] >= self.master.coverage]
         self.df_overlap_part = self.df_overlap[self.df_overlap['Coverage'] < self.master.coverage]
 
+        # Filter low-scoring matches
+        self.df_overlap_compl = self.df_overlap_compl[self.df_overlap_compl['Score'] >= self.master.score]
+
         if len(self.df_overlap_compl) == 0:
-            logging.info('No matches with coverage >= {}% found'.format(self.master.coverage))
+            logging.info('No matches with score >= {} and coverage >= {}% found'.format(self.master.score, self.master.coverage))
             self.master.clean()
             sys.exit()
 
@@ -354,22 +353,6 @@ class Cluster(object):
                     fas.seq = Seq(seq)
                 # Write sequence
                 SeqIO.write(fas, out_file, "fasta")
-
-    def write_flank(self, df):
-        '''
-        Write the flanking sequences to a fasta file for bprom
-        '''
-        logging.debug('Writing flanking sequences to file')
-        
-        acc = list(df['Cluster'])
-        flank_l = list(df['Left_flank'])
-        flank_r = list(df['Right_flank'])
-
-        for x in zip(acc, flank_l, flank_r) :
-            with open(os.path.join(self.master.out, 'flanking', 'Cluster'+str(x[0])+'_Left.fna'), 'w') as fl:
-                fl.write('>Cluster'+str(x[0])+'_Left\n'+x[1]+'\n')
-            with open(os.path.join(self.master.out, 'flanking', 'Cluster'+str(x[0])+'_Right.fna'), 'w') as fl:
-                fl.write('>Cluster'+str(x[0])+'_Right\n'+x[2]+'\n')
 
     def write_repeats(self, df, which):
         '''
