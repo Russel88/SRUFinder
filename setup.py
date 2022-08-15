@@ -5,14 +5,14 @@ with open("README.md", "r") as fh:
 
 setuptools.setup(
     name="srufinder", 
-    version="0.1.1",
+    version="0.2.1",
     author="Jakob Russel",
     author_email="russel2620@gmail.com",
     description="SRUFinder: Find and subtype SRUs, mini-arrays, and CRISPR arrays by repeat matching",
     long_description=long_description,
     long_description_content_type="text/markdown",
     url="https://github.com/Russel88/SRUFinder",
-    download_url="https://github.com/Russel88/SRUFinder/archive/v0.1.1.tar.gz",
+    download_url="https://github.com/Russel88/SRUFinder/archive/v0.2.1.tar.gz",
     packages=setuptools.find_packages(),
     classifiers=[
         "Programming Language :: Python :: 3",

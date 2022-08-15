@@ -47,7 +47,7 @@ class Blast(object):
         '''
 
         # Run only if any array is found and analyis not skipped by user
-        if (not self.master.noself) and os.path.isfile(self.master.out+'spacers.fa'):
+        if self.master.selfmatch and os.path.isfile(self.master.out+'spacers.fa'):
         
             # Make the database
             self.make_db(self.master.out+'genome.fna', self.master.out+'genome')

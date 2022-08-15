@@ -71,16 +71,20 @@ class Cluster(object):
         
             self.df_sru = self.df_appended[self.df_appended['Cluster'].isin(cluster_sru)]
             self.add_flank()
+            # Post-hoc check of SRUs.
+            # Check if they are part of an array, but the remainder of is not found by BLAST or the array is inside a false ORF, which was masked in the initial search
+            self.flankmatch()        
+            self.df_sru = self.df_sru.round({'Left_match': 2, 'Right_match': 2})
+            
+            # Write 
             self.df_sru.to_csv(self.master.out+'SRUs.tab', index=False, sep='\t')
-            self.write_repeats(self.df_sru, 'sru')
-
+        
         # If any arrays
         if len(cluster_array) > 0:
 
             self.df_array = self.df_appended[self.df_appended['Cluster'].isin(cluster_array)]
             self.convert_array()
             self.df_arrays.to_csv(self.master.out+'arrays.tab', index=False, sep='\t')
-            self.write_repeats(self.df_arrays, 'array')
 
         logging.info('Found {} SRU(s) and {} CRISPR array(s)'.format(len(cluster_sru), len(cluster_array)))
 
@@ -170,12 +174,9 @@ class Cluster(object):
         # Sort by position
         self.df_overlap = self.df_overlap.sort_values('Min')
 
-        # Split in high and low coverage
-        self.df_overlap_compl = self.df_overlap[self.df_overlap['Coverage'] >= self.master.coverage]
-        self.df_overlap_part = self.df_overlap[self.df_overlap['Coverage'] < self.master.coverage]
-
-        # Filter low-scoring matches
-        self.df_overlap_compl = self.df_overlap_compl[self.df_overlap_compl['Score'] >= self.master.score]
+        # Split in high and low coverage or score
+        self.df_overlap_compl = self.df_overlap[(self.df_overlap['Coverage'] >= self.master.coverage) & (self.df_overlap['Score'] >= self.master.score)]
+        self.df_overlap_part = self.df_overlap[(self.df_overlap['Coverage'] < self.master.coverage) | (self.df_overlap['Score'] < self.master.score)]
 
         if len(self.df_overlap_compl) == 0:
             logging.info('No matches with score >= {} and coverage >= {}% found'.format(self.master.score, self.master.coverage))
@@ -262,7 +263,7 @@ class Cluster(object):
 
         if start < 1:
             start = 1
-       
+        
         return(''.join(self.master.sequences[str(acc)][(start-1):end]))
 
     def add_repeats(self):
@@ -273,7 +274,7 @@ class Cluster(object):
         logging.debug('Adding repeat sequences')
 
         self.df_overlap.insert(len(self.df_overlap.columns), 'Sequence', self.df_overlap.apply(lambda row: self.get_sequence(row['Acc'], row['Min'], row['Max']), axis=1))
-    
+
     def add_flank(self):
         '''
         Add flanking sequences to the SRU dataframe
@@ -283,6 +284,26 @@ class Cluster(object):
 
         self.df_sru.insert(len(self.df_sru.columns), 'Left_flank', self.df_sru.apply(lambda row: self.get_sequence(row['Acc'], row['Start']-1-self.master.flank, row['Start']-1), axis=1))
         self.df_sru.insert(len(self.df_sru.columns), 'Right_flank', self.df_sru.apply(lambda row: self.get_sequence(row['Acc'], row['End']+1, row['End']+1+self.master.flank), axis=1))
+
+    def flankmatch(self):
+        '''
+        Look for matching repeats in the flanking sequences around SRUs
+        '''
+       
+        logging.debug('Post-hoc filter of SRUs')
+
+        # Define a function for calculating identity of best match
+        def flankident(rep, flank):
+            score = pairwise2.align.localxs(rep, flank, -1, -1, score_only=True)
+            if isinstance(score, float):
+                return score/len(rep)
+            else:
+                return 0
+
+        # Apply for each flank
+        self.df_sru.insert(len(self.df_sru.columns), 'Left_match', self.df_sru.apply(lambda x: flankident(x.Sequence, x.Left_flank), axis=1))
+        self.df_sru.insert(len(self.df_sru.columns), 'Right_match', self.df_sru.apply(lambda x: flankident(x.Sequence, x.Right_flank), axis=1))
+
 
     def convert_array(self):
         '''
@@ -354,28 +375,4 @@ class Cluster(object):
                 # Write sequence
                 SeqIO.write(fas, out_file, "fasta")
 
-    def write_repeats(self, df, which):
-        '''
-        Write repeat sequences to a fasta file for RNAfold
-        '''
-        logging.debug('Writing repeat sequences to file')
-
-        if which == 'sru':
-            acc = list(df['Cluster'])
-            seqs = list(df['Sequence'])
-
-            with open(self.master.out+'repeats.fna', 'a') as fl:
-                for x in zip(acc, seqs) :
-                    fl.write('>Cluster'+str(x[0])+'_SRU\n'+x[1]+'\n')
-        
-        if which == 'array':
-            acc = list(df['Cluster'])
-            seqs = list(df['Repeats'])
-            
-            with open(self.master.out+'repeats.fna', 'a') as fl:
-                for x in zip(acc, seqs) :
-                    n = 0
-                    for y in x[1]:
-                        n += 1
-                        fl.write('>Cluster'+str(x[0])+'_Repeat'+str(n)+'\n'+y+'\n')
         

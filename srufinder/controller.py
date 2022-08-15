@@ -35,7 +35,7 @@ class Controller(object):
         self.flank = args.flank
         self.spacer_identity = args.spacer_identity
         self.spacer_coverage = args.spacer_coverage
-        self.noself = args.noself
+        self.selfmatch = args.selfmatch
         self.in_orf = args.in_orf
 
         # Logger
@@ -83,10 +83,13 @@ class Controller(object):
                 self.sequences = {}
                 with open(self.fasta, 'r') as handle:
                     for rec in SeqIO.parse(handle, 'fasta'):
+                        if rec.id in self.sequences:
+                            logging.error('Duplicate fasta headers detected!\nPlease ensure input has unique headers without spaces.')
+                            sys.exit()
                         self.sequences[rec.id] = rec.seq
 
             except:
-                logging.error('Input file is not in fasta format')
+                logging.error('Input file is in bad format')
                 sys.exit()
         else:
             logging.error('Could not find input file')
