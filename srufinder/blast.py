@@ -56,7 +56,12 @@ class Blast(object):
 
             # BLASTn
             subprocess.run(['blastn', 
-                            '-task', 'blastn-short', 
+                            '-reward', '3',
+                            '-penalty', '-2',
+                            '-gapopen', '5',
+                            '-gapextend', '5',
+                            '-dust', 'no',
+                            '-evalue', '100',
                             '-word_size', str(self.master.word_size), 
                             '-query', self.master.out+'spacers.fa',
                             '-db', self.master.out+'genome',
@@ -65,3 +70,5 @@ class Blast(object):
                             '-qcov_hsp_perc', str(self.master.spacer_coverage),
                             '-out', self.master.out+'blast_spacers.tab',
                             '-num_threads', str(self.master.threads)])
+
+
