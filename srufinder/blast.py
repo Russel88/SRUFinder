@@ -33,7 +33,12 @@ class Blast(object):
 
         # BLASTn
         subprocess.run(['blastn', 
-                        '-task', 'blastn-short', 
+                        '-reward', '3',
+                        '-penalty', '-2',
+                        '-gapopen', '5',
+                        '-gapextend', '5',
+                        '-dust', 'no',
+                        '-evalue', '100',
                         '-word_size', str(self.master.word_size), 
                         '-query', self.master.repeatdb,
                         '-db', self.master.out+'masked',
@@ -61,7 +66,6 @@ class Blast(object):
                             '-gapopen', '5',
                             '-gapextend', '5',
                             '-dust', 'no',
-                            '-evalue', '100',
                             '-word_size', str(self.master.word_size), 
                             '-query', self.master.out+'spacers.fa',
                             '-db', self.master.out+'genome',

@@ -52,7 +52,7 @@ class Cluster(object):
         # Cluster matches in arrays
         self.cluster_adj()
 
-        # Append partial matches
+        # Append par#
         self.append_partial()
 
         # Round
@@ -168,8 +168,7 @@ class Cluster(object):
         '''
         Cluster adjacent matches into arrays
         '''
-
-        logging.info('Clustering matches')
+        logging.info('Clustering repeats')
 
         # Sort by position
         self.df_overlap = self.df_overlap.sort_values('Min')
@@ -183,40 +182,21 @@ class Cluster(object):
             self.master.clean()
             sys.exit()
 
-        cluster_df_lst = []
-        cluster = 0
-        # For each contig
-        for i in set(self.df_overlap_compl['Acc']):
-            tmp = self.df_overlap_compl[self.df_overlap_compl['Acc'] == i]
+        self.df_overlap_compl["Repeat_type"] = self.df_overlap_compl["Repeat"].str.split(':').str[0]
+        #cluster all repeats with the same type, and then group those from the same type less than 100bp apart
+        self.df_overlap_compl = self.df_overlap_compl.sort_values(['Acc', 'Repeat_type', 'Min'])
+        #cluster those that are less than 100bp apart from the previous one (that is, min(n+1) - max(n) < 100)
+        #create a column with the difference between the Min value of the current row and the Max value of the previous row
+        self.df_overlap_compl['Min_diff'] = self.df_overlap_compl['Min'] - self.df_overlap_compl['Max'].shift(1)
+        #cluster those contiguous repeats that are less than 100bp apart (absolute value)
+        self.df_overlap_compl['Cluster'] = (self.df_overlap_compl['Min_diff'].abs() > 100).cumsum()
+        #get clusters with more than 3 repeats
 
-            pos = tmp[['Min','Max']].values
-            cluster_list = []
-            # Loop over complete matches
-            for ind, k in enumerate(pos):
-                # Keep first match
-                if ind == 0:
-                    cluster_list.append(cluster)
-                    arrays_cluster = [k]
-                else:
-                    # If match within Xbp of any previous, add match to current cluster
-                    if min(self.dist_all(k, arrays_cluster)) <= self.master.max_dist:
-                        cluster_list.append(cluster)
-                        arrays_cluster.append(k)
-                    # If match > Xbp from previous, initiate new cluster
-                    else:
-                        cluster += 1
-                        arrays_cluster = [k]
-                        cluster_list.append(cluster)
-            
-            tmp.insert(len(tmp.columns), 'Cluster', cluster_list)
-            cluster_df_lst.append(tmp)
-            
-            # Increment cluster ID for next acc
-            cluster += 1
-
+        self.df_overlap_compl = self.df_overlap_compl.sort_values(['Acc','Min'])
+        self.df_overlap_compl = self.df_overlap_compl.reset_index(drop=True)
 
         # If several contigs, concatenate
-        self.df_cluster = pd.concat(cluster_df_lst)
+        self.df_cluster = self.df_overlap_compl
 
     def append_partial(self):
         '''
