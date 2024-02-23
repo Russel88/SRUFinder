@@ -6,9 +6,10 @@ import re
 
 import pandas as pd
 
-from Bio import pairwise2
+from Bio import Align
 from Bio import SeqIO
 from Bio.Seq import Seq
+from Bio import pairwise2
 
 class Cluster(object):
     
@@ -52,7 +53,7 @@ class Cluster(object):
         # Cluster matches in arrays
         self.cluster_adj()
 
-        # Append partial matches
+        # Append par#
         self.append_partial()
 
         # Round
@@ -116,8 +117,29 @@ class Cluster(object):
         '''
         Calculate identity between two sequences
         '''
-        align = pairwise2.align.globalxs(x, y, -1, -1, penalize_end_gaps=False)
-        return(align[0][2]/min(len(x), len(y))*100)
+        aligner = Align.PairwiseAligner()
+
+        aligner.match_score = 1.0 
+        aligner.mismatch_score = -2.0
+        aligner.gap_score = -10
+        aligner.extend_gap_score = -10
+
+        alignments = aligner.align(x, y)
+
+        best_alignment = alignments[0]
+
+        # Extract aligned sequences from the best alignment
+        aligned_seq1, aligned_seq2 = best_alignment
+
+        matches = sum(1 for a, b in zip(aligned_seq1, aligned_seq2) if a == b)
+        #compute lengths of aligned sequences without gaps
+        len1 = len(aligned_seq1.replace('-', ''))
+        len2 = len(aligned_seq2.replace('-', ''))
+        alignment_length = min(len1, len2)
+
+        # Calculate pidentity
+        pidentity = (matches / alignment_length) * 100 if alignment_length > 0 else 0
+        return pidentity
 
     def identity_all(self,x,ll):
         '''
@@ -168,8 +190,10 @@ class Cluster(object):
         '''
         Cluster adjacent matches into arrays
         '''
+        pd.set_option('display.max_rows', None)  # None means unlimited
+        pd.set_option('display.max_columns', None)  # Adjust as per your DataFrame's number of columns
 
-        logging.info('Clustering matches')
+        logging.info('Clustering repeats')
 
         # Sort by position
         self.df_overlap = self.df_overlap.sort_values('Min')
@@ -183,40 +207,35 @@ class Cluster(object):
             self.master.clean()
             sys.exit()
 
-        cluster_df_lst = []
-        cluster = 0
-        # For each contig
-        for i in set(self.df_overlap_compl['Acc']):
-            tmp = self.df_overlap_compl[self.df_overlap_compl['Acc'] == i]
+        self.df_overlap_compl["Repeat_type"] = self.df_overlap_compl["Repeat"].str.split(':').str[0]
+        #cluster all repeats with the same type, and then group those from the same type less than 100bp apart
+        self.df_overlap_compl = self.df_overlap_compl.sort_values(['Acc', 'Repeat_type', 'Min'])
+        #cluster those that are less than 100bp apart from the previous one (that is, min(n+1) - max(n) < 100)
+        #create a column with the difference between the Min value of the current row and the Max value of the previous row
+        self.df_overlap_compl['Min_diff'] = self.df_overlap_compl['Min'] - self.df_overlap_compl['Max'].shift(1)
+        #cluster those contiguous repeats that are less than 100bp apart (absolute value)
+        self.df_overlap_compl['Cluster'] = (self.df_overlap_compl['Min_diff'].abs() > self.master.max_dist).cumsum()
 
-            pos = tmp[['Min','Max']].values
-            cluster_list = []
-            # Loop over complete matches
-            for ind, k in enumerate(pos):
-                # Keep first match
-                if ind == 0:
-                    cluster_list.append(cluster)
-                    arrays_cluster = [k]
-                else:
-                    # If match within Xbp of any previous, add match to current cluster
-                    if min(self.dist_all(k, arrays_cluster)) <= self.master.max_dist:
-                        cluster_list.append(cluster)
-                        arrays_cluster.append(k)
-                    # If match > Xbp from previous, initiate new cluster
-                    else:
-                        cluster += 1
-                        arrays_cluster = [k]
-                        cluster_list.append(cluster)
-            
-            tmp.insert(len(tmp.columns), 'Cluster', cluster_list)
-            cluster_df_lst.append(tmp)
-            
-            # Increment cluster ID for next acc
-            cluster += 1
+        # iterate over the clusters, and compute similarity between the sequences of the cluster. remove rows with similarity <40% to any other sequence in the cluster
+        to_remove = []
+        clusters = self.df_overlap_compl.groupby('Cluster')
+        for name, group in clusters:
+            if len(group) > 1:
+                sequences = group["Sequence"].tolist()
+                
+                for i in range(len(group)):
+
+                    similarities = self.identity_all(sequences[i], [x for j, x in enumerate(sequences) if j != i])
+                    if not any([similarity >= 40 for similarity in similarities]):
+                        to_remove.append(group.index[i])
+        
 
 
+        self.df_overlap_compl = self.df_overlap_compl.drop(to_remove)
+        self.df_overlap_compl = self.df_overlap_compl.sort_values(['Acc','Min'])
+        self.df_overlap_compl = self.df_overlap_compl.reset_index(drop=True)
         # If several contigs, concatenate
-        self.df_cluster = pd.concat(cluster_df_lst)
+        self.df_cluster = self.df_overlap_compl
 
     def append_partial(self):
         '''
