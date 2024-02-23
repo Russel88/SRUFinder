@@ -7,6 +7,8 @@ import glob
 import pandas as pd
 
 from Bio import SeqIO
+from Bio import Align
+
 
 class Controller(object):
 
